@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>FinBot - Financial Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f7f6fc; color: #2e335b; margin: 0; }
+    h2 { margin-top: 0; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(80, 102, 245, 0.08); padding: 25px; }
+    .error { color: #c33; font-weight: 500; }
+    .metrics { display: flex; gap: 20px; margin: 10px 0 18px 0; flex-wrap: wrap;}
+    .metrics div { background: #edeaff; padding: 8px 18px; border-radius: 10px; font-size: 1.05rem; }
+
+    table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #f0f0f3; padding: 8px 11px; text-align: center; }
+    th { background: #f8f8fb; font-weight: 700; }
+
+    img.diagram-img { width: 100%; border-radius: 12px; background: #ebeaff; box-shadow: 0 2px 16px rgba(80,102,245,0.07); }
+
+    .run-btn { background: #574fd6; color: white; border: none; border-radius: 10px; padding: 10px 25px;
+               font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 7px; }
+    .run-btn:hover { background: #403cc9; }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 240px 1fr 380px;
+      grid-template-rows: 1fr 0.7fr;
+      gap: 26px;
+      padding: 25px;
+    }
+
+    .dashboard-sidebar { grid-column: 1/2; grid-row: 1/3; }
+    .dashboard-main { grid-column: 2/3; grid-row: 1/2; }
+    .dashboard-classification { grid-column: 2/3; grid-row: 2/3; }
+    .dashboard-chat { grid-column: 3/4; grid-row: 1/3; }
+
+    @media (max-width: 960px) {
+      .dashboard-grid { grid-template-columns: 1fr; grid-template-rows:auto; }
+      .dashboard-sidebar,.dashboard-main,.dashboard-classification,.dashboard-chat { grid-column:auto; grid-row:auto; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="dashboard-grid">
+    <!-- Sidebar -->
+    <div class="dashboard-sidebar card">
+      <h2>Data Upload</h2>
+      <label>Transactions:
+        <input type="file" id="transactions-file-input">
+      </label><br><br>
+      <label>NIFTY 50:
+        <input type="file" id="nifty-file-input">
+      </label><br>
+      <button class="run-btn" onclick="runFinancialAnalysis()">Run Financial Analysis</button>
+      <p id="error-message" class="error"></p>
+    </div>
+
+    <!-- Main Regression Analysis -->
+    <div class="dashboard-main card">
+      <h2>NIFTY 50 Market Forecast</h2>
+      <div class="metrics">
+        <div>R²: <span id="r2-score">--</span></div>
+        <div>MSE: <span id="mse">--</span></div>
+        <div>Signal: <span id="signal-out">--</span></div>
+      </div>
+      <h3>Forecast Table</h3>
+      <table id="forecast-table">
+        <thead>
+          <tr><th>Date</th><th>Actual</th><th>Predicted</th><th>Change</th><th>Signal</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <h3>Regression Plot</h3>
+      <img id="regression-plot-img" class="diagram-img" alt="Regression Plot">
+      <h3>Regression Graph (Actual vs Predicted)</h3>
+      <img id="regression-graph-img" class="diagram-img" alt="Regression Graph">
+    </div>
+
+    <!-- Classification Panel -->
+    <div class="dashboard-classification card">
+      <h2>Transaction Classification</h2>
+      <img id="confusion-matrix-img" class="diagram-img" alt="Confusion Matrix"/>
+      <h3>Classification Results</h3>
+      <table id="classification-table">
+        <thead>
+          <tr><th>Label</th><th>Precision</th><th>Recall</th><th>F1-Score</th><th>Support</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Chatbot -->
+    <div class="dashboard-chat card">
+      <h2>FINBOT: AI Assistant</h2>
+      <div style="display:flex;gap:10px;">
+        <textarea id="chat-input" rows="2" style="flex:1;" placeholder="Ask FINBOT... e.g. 'Should I sell my stock?'"></textarea>
+        <button class="run-btn" onclick="sendChat()">Ask</button>
+      </div>
+      <div id="chat-response" style="margin-top:10px;background:#ebeaff;padding:13px 18px;border-radius:12px;min-height:32px;"></div>
+    </div>
+  </div>
+
+  <script>
+function runFinancialAnalysis() {
+  const transactionsFile = document.getElementById('transactions-file-input').files[0];
+  const niftyFile = document.getElementById('nifty-file-input').files[0];
+  if (!transactionsFile || !niftyFile) {
+    document.getElementById('error-message').textContent = "Please upload both files.";
+    return;
+  }
+  document.getElementById('error-message').textContent = "";
+
+  const formData = new FormData();
+  formData.append("transactions_file", transactionsFile);
+  formData.append("nifty_file", niftyFile);
+
+  fetch("http://127.0.0.1:5000/analyze", { method: "POST", body: formData })
+  .then(res => res.json())
+  .then(response => {
+    if (response.status === "success") {
+      const reg = response.data.regression_results;
+      const cls = response.data.classification_results;
+      document.getElementById('r2-score').textContent = reg.r2_score.toFixed(4);
+      document.getElementById('mse').textContent = reg.mse.toFixed(2);
+      document.getElementById('signal-out').textContent = reg.forecast_table?.[0]?.Signal || "--";
+
+      // Forecast table
+      const tableBody = document.getElementById('forecast-table').getElementsByTagName('tbody')[0];
+      tableBody.innerHTML = "";
+      reg.forecast_table.forEach(row => {
+        tableBody.innerHTML += `<tr>
+          <td>${row["Date"]}</td><td>${row["Actual Close"]}</td><td>${row["Predicted Close"]}</td>
+          <td>${row["Percent Change"]}</td><td>${row["Signal"]}</td></tr>`;
+      });
+
+      // Regression and Graphs
+      document.getElementById('regression-plot-img').src = reg.forecast_plot
+        ? "data:image/png;base64," + reg.forecast_plot : "";
+      document.getElementById('regression-graph-img').src = reg.regression_graph
+        ? "data:image/png;base64," + reg.regression_graph : "";
+
+      // Confusion Matrix
+      document.getElementById('confusion-matrix-img').src =
+        "data:image/png;base64," + cls.confusion_matrix_plot;
+
+      // Classification Table
+      const report = cls.classification_report;
+      const tbody = document.getElementById('classification-table').getElementsByTagName('tbody')[0];
+      tbody.innerHTML = "";
+      Object.keys(report).forEach(label => {
+        if (typeof report[label] === "object") {
+          const r = report[label];
+          tbody.innerHTML += `<tr>
+            <td>${label}</td><td>${(r.precision||0).toFixed(2)}</td>
+            <td>${(r.recall||0).toFixed(2)}</td><td>${(r["f1-score"]||0).toFixed(2)}</td>
+            <td>${r.support||0}</td></tr>`;
+        }
+      });
+    } else {
+      document.getElementById('error-message').textContent = response.message;
+    }
+  })
+  .catch(err => document.getElementById('error-message').textContent = err.message);
+}
+
+function sendChat() {
+  const prompt = document.getElementById('chat-input').value.trim();
+  if (!prompt) return;
+  fetch("http://127.0.0.1:5000/chat", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt })
+  })
+  .then(res => res.json())
+  .then(response => {
+    document.getElementById('chat-response').textContent = response.response || response.message;
+  })
+  .catch(err => document.getElementById('chat-response').textContent = "Error: " + err.message);
+}
+  </script>
+</body>
+</html>
